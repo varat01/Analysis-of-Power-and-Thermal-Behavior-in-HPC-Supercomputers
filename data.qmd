@@ -2,4 +2,12 @@
 
 ## Description
 
+The data used for this project is from Oak Ridge National Laboratory:
+https://doi.ccs.ornl.gov/dataset/086578e9-8a9f-56b1-a657-0ed8b7393deb.
+I will be using a_fullperiod_10sec_58hosts.tar which is one of the sample subsets in that dataset package. It contains 10-second mean telemetry (power + temperature) across 58 nodes, spanning multiple months between 2020–2022.
+
+The data is collected by the lab's systems administrators and monitoring infrastructure. It is sampled at 1 Hz for multiple nodes across the supercomputer. The format is in parquet files where each contains time series measurements for multiple nodes. The data fields include information such as time stamps, hostname/node ID, CPU and GPU power and temperature readings, and some additional sensor readings. The data collection was completed in 2022 for this set, therefore it is no longer actively being updated.
+
 ## Missing value analysis
+
+I have not noticed any large amount of missing values as of now, but the telemetry might include spikes or noise so I anticipate smoothing may be required for the visual analysis.
