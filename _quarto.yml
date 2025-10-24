@@ -6,11 +6,10 @@ execute:
   echo: true
 
 book:
-  title: "YOUR PROJECT TITLE"
+  title: "Analysis of Power and Thermal Behavior in HPC Supercomputers"
   author:
-    - AUTHOR1 (UNI1)
-    - AUTHOR2 (UNI2)
-  repo-url: https://github.com/YOUR_GITHUB_ACCOUNT/REPO_NAME
+    - Vara Tummala (vjt2110)
+  repo-url: https://github.com/varat01/Analysis-of-Power-and-Thermal-Behavior-in-HPC-Supercomputers
   date: today
   page-footer:
     right: |
