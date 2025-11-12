@@ -11,3 +11,10 @@ The data is collected by the lab's systems administrators and monitoring infrast
 ## Missing value analysis
 
 I have not noticed any large amount of missing values as of now, but the telemetry might include spikes or noise so I anticipate smoothing may be required for the visual analysis.
+
+```{r}
+library(arrow)
+df <- read_parquet("~/Desktop/EDAV/Final Project/a_fullperiod_10sec_58hosts_decomp/a07n04/202201/20220101.parquet")
+head(df)
+```
+

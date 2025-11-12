@@ -20,6 +20,41 @@ ul.task-list li input[type="checkbox"] {
   margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
   vertical-align: middle;
 }
+/* CSS for syntax highlighting */
+html { -webkit-text-size-adjust: 100%; }
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+  { counter-reset: source-line 0; }
+pre.numberSource code > span
+  { position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+  { content: counter(source-line);
+    position: relative; left: -1em; text-align: right; vertical-align: baseline;
+    border: none; display: inline-block;
+    -webkit-touch-callout: none; -webkit-user-select: none;
+    -khtml-user-select: none; -moz-user-select: none;
+    -ms-user-select: none; user-select: none;
+    padding: 0 4px; width: 4em;
+  }
+pre.numberSource { margin-left: 3em;  padding-left: 4px; }
+div.sourceCode
+  {   }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
 </style>
 
 
@@ -173,9 +208,76 @@ ul.task-list li input[type="checkbox"] {
 
 <section id="description" class="level2" data-number="2.1">
 <h2 data-number="2.1" class="anchored" data-anchor-id="description"><span class="header-section-number">2.1</span> Description</h2>
+<p>The data used for this project is from Oak Ridge National Laboratory: https://doi.ccs.ornl.gov/dataset/086578e9-8a9f-56b1-a657-0ed8b7393deb. I will be using a_fullperiod_10sec_58hosts.tar which is one of the sample subsets in that dataset package. It contains 10-second mean telemetry (power + temperature) across 58 nodes, spanning multiple months between 2020–2022.</p>
+<p>The data is collected by the lab’s systems administrators and monitoring infrastructure. It is sampled at 1 Hz for multiple nodes across the supercomputer. The format is in parquet files where each contains time series measurements for multiple nodes. The data fields include information such as time stamps, hostname/node ID, CPU and GPU power and temperature readings, and some additional sensor readings. The data collection was completed in 2022 for this set, therefore it is no longer actively being updated.</p>
 </section>
 <section id="missing-value-analysis" class="level2" data-number="2.2">
 <h2 data-number="2.2" class="anchored" data-anchor-id="missing-value-analysis"><span class="header-section-number">2.2</span> Missing value analysis</h2>
+<p>I have not noticed any large amount of missing values as of now, but the telemetry might include spikes or noise so I anticipate smoothing may be required for the visual analysis.</p>
+<div class="cell">
+<details class="code-fold">
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb1"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(arrow)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+<div class="cell-output cell-output-stderr">
+<pre><code>
+Attaching package: 'arrow'</code></pre>
+</div>
+<div class="cell-output cell-output-stderr">
+<pre><code>The following object is masked from 'package:utils':
+
+    timestamp</code></pre>
+</div>
+<details class="code-fold">
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb4"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a>df <span class="ot">&lt;-</span> <span class="fu">read_parquet</span>(<span class="st">"~/Desktop/EDAV/Final Project/a_fullperiod_10sec_58hosts_decomp/a07n04/202201/20220101.parquet"</span>)</span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a><span class="fu">head</span>(df)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+<div class="cell-output cell-output-stdout">
+<pre><code>            timestamp hostname ps0_input_power ps1_input_power p0_gpu0_power
+1 2022-01-01 16:45:50   a07n04           371.0           546.0          51.0
+2 2022-01-01 16:46:00   a07n04           371.5           546.1          51.5
+3 2022-01-01 16:46:10   a07n04           370.9           546.4          51.5
+4 2022-01-01 16:46:20   a07n04           371.7           545.7          51.3
+5 2022-01-01 16:46:30   a07n04           371.6           545.8          51.4
+6 2022-01-01 16:46:40   a07n04           371.7           545.9          51.4
+  p0_gpu1_power p0_gpu2_power p1_gpu0_power p1_gpu1_power p1_gpu2_power
+1          50.0          52.0          50.0          50.0          52.0
+2          50.0          52.4          50.2          50.0          52.0
+3          50.0          52.5          50.2          50.0          52.0
+4          49.8          52.3          50.1          49.8          52.0
+5          49.9          52.3          50.1          50.0          52.2
+6          50.0          52.5          50.0          49.8          52.0
+  p0_power p1_power gpu0_core_temp gpu1_core_temp gpu2_core_temp gpu3_core_temp
+1     57.0     49.0             31             32           33.0           31.0
+2     57.0     49.0             31             32           32.0           31.3
+3     55.6     49.2             31             32           32.0           31.6
+4     56.9     49.1             31             32           32.0           31.4
+5     56.9     49.4             31             32           32.0           31.4
+6     56.9     49.0             31             32           32.2           31.6
+  gpu4_core_temp gpu5_core_temp gpu0_mem_temp gpu1_mem_temp gpu2_mem_temp
+1             32             32            28            29            30
+2             32             32            28            29            30
+3             32             32            28            29            30
+4             32             32            28            29            30
+5             32             32            28            29            30
+6             32             32            28            29            30
+  gpu3_mem_temp gpu4_mem_temp gpu5_mem_temp p0_core_temp_mean p0_core_temp_min
+1          28.0            28          29.0          29.04762             27.0
+2          28.8            28          28.7          29.27619             27.4
+3          28.1            28          28.1          29.48095             27.6
+4          28.0            28          28.4          29.64762             27.9
+5          28.4            28          28.5          29.24762             27.2
+6          28.5            28          28.5          29.33809             27.4
+  p0_core_temp_max p1_core_temp_mean p1_core_temp_min p1_core_temp_max
+1             39.0          29.61905             27.0             38.0
+2             37.9          29.49047             28.2             36.8
+3             38.3          29.43809             28.2             37.0
+4             38.6          29.66667             28.5             36.8
+5             38.2          29.39047             28.1             36.7
+6             38.4          29.54762             28.2             36.7</code></pre>
+</div>
+</div>
 
 
 </section>
