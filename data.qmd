@@ -8,13 +8,142 @@ I will be using a_fullperiod_10sec_58hosts.tar which is one of the sample subset
 
 The data is collected by the lab's systems administrators and monitoring infrastructure. It is sampled at 1 Hz for multiple nodes across the supercomputer. The format is in parquet files where each contains time series measurements for multiple nodes. The data fields include information such as time stamps, hostname/node ID, CPU and GPU power and temperature readings, and some additional sensor readings. The data collection was completed in 2022 for this set, therefore it is no longer actively being updated.
 
-## Missing value analysis
-
-I have not noticed any large amount of missing values as of now, but the telemetry might include spikes or noise so I anticipate smoothing may be required for the visual analysis.
-
+For this project's purposes I selected 3 nodes and a continuous 7 day period from the most recent data collection year of 2022. This subset provides enough cross node variation to explore power and temperature relationships, identify anomalies, and compare operational behavior. HPC telemetry produces millions of rows of data so restricting to a smaller sample ensures all visuals remain interpretable and reproducible. Additionally, large supercomputers such as this one use homogeneous hardware so the nodes in the same rack or partition tend to show similar behavior. 
 ```{r}
+#| label: Libraries
 library(arrow)
-df <- read_parquet("~/Desktop/EDAV/Final Project/a_fullperiod_10sec_58hosts_decomp/a07n04/202201/20220101.parquet")
-head(df)
+library(lubridate)
+library(naniar)
+library(ggplot2)
+library(dplyr)
+library(tidyr)
 ```
 
+## Data Loading
+```{r}
+#| label: Data Loading
+node_files <- list(
+  a07n04 = c(
+    "~/Desktop/EDAV/Final Project/a_fullperiod_10sec_58hosts_decomp/a07n04/202201/20220101.parquet",
+    "~/Desktop/EDAV/Final Project/a_fullperiod_10sec_58hosts_decomp/a07n04/202201/20220102.parquet",
+    "~/Desktop/EDAV/Final Project/a_fullperiod_10sec_58hosts_decomp/a07n04/202201/20220103.parquet",
+    "~/Desktop/EDAV/Final Project/a_fullperiod_10sec_58hosts_decomp/a07n04/202201/20220104.parquet",
+    "~/Desktop/EDAV/Final Project/a_fullperiod_10sec_58hosts_decomp/a07n04/202201/20220105.parquet",
+    "~/Desktop/EDAV/Final Project/a_fullperiod_10sec_58hosts_decomp/a07n04/202201/20220106.parquet",
+    "~/Desktop/EDAV/Final Project/a_fullperiod_10sec_58hosts_decomp/a07n04/202201/20220107.parquet"
+  ),
+  
+  b03n06 = c(
+    "~/Desktop/EDAV/Final Project/a_fullperiod_10sec_58hosts_decomp/b03n06/202201/20220101.parquet",
+    "~/Desktop/EDAV/Final Project/a_fullperiod_10sec_58hosts_decomp/b03n06/202201/20220102.parquet",
+    "~/Desktop/EDAV/Final Project/a_fullperiod_10sec_58hosts_decomp/b03n06/202201/20220103.parquet",
+    "~/Desktop/EDAV/Final Project/a_fullperiod_10sec_58hosts_decomp/b03n06/202201/20220104.parquet",
+    "~/Desktop/EDAV/Final Project/a_fullperiod_10sec_58hosts_decomp/b03n06/202201/20220105.parquet",
+    "~/Desktop/EDAV/Final Project/a_fullperiod_10sec_58hosts_decomp/b03n06/202201/20220106.parquet",
+    "~/Desktop/EDAV/Final Project/a_fullperiod_10sec_58hosts_decomp/b03n06/202201/20220107.parquet"
+  ),
+  
+  c03n13 = c(
+    "~/Desktop/EDAV/Final Project/a_fullperiod_10sec_58hosts_decomp/c03n13/202201/20220101.parquet",
+    "~/Desktop/EDAV/Final Project/a_fullperiod_10sec_58hosts_decomp/c03n13/202201/20220102.parquet",
+    "~/Desktop/EDAV/Final Project/a_fullperiod_10sec_58hosts_decomp/c03n13/202201/20220103.parquet",
+    "~/Desktop/EDAV/Final Project/a_fullperiod_10sec_58hosts_decomp/c03n13/202201/20220104.parquet",
+    "~/Desktop/EDAV/Final Project/a_fullperiod_10sec_58hosts_decomp/c03n13/202201/20220105.parquet",
+    "~/Desktop/EDAV/Final Project/a_fullperiod_10sec_58hosts_decomp/c03n13/202201/20220106.parquet",
+    "~/Desktop/EDAV/Final Project/a_fullperiod_10sec_58hosts_decomp/c03n13/202201/20220107.parquet"
+  )
+)
+
+df_all <- do.call(
+  rbind,
+  lapply(names(node_files), function(node_name) {
+    do.call(
+      rbind,
+      lapply(node_files[[node_name]], function(path) {
+        df <- read_parquet(path)
+        df$node <- node_name
+        df
+      })
+    )
+  })
+)
+```
+
+## Missing value analysis
+
+Missing values could occur due to sensor glitches, communication drops, or system resets. The plots below include a missing value heatmap and a bar plot showing aggregated missing patterns if any are present. 
+
+```{r}
+#| label: Missing Value Heatmap and Aggregated Missing Patterns Bar Chart
+# Missing Value Heatmap
+df_all |>
+  select(all_of(names(df_all))) |>
+  vis_miss(warn_large_data = FALSE) +
+  labs(
+    title = "Missing Value Heatmap",
+    x = NULL,
+    y = "Observation Index"
+  ) +
+  theme_minimal(base_size = 14) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 0, size = 7))
+
+# Aggregated Missing Patterns Bar Chart
+df_missing_pct <- df_all |> 
+  summarise(across(everything(), ~ mean(is.na(.)) * 100)) |> 
+  pivot_longer(
+    cols = everything(),
+    names_to = "variable",
+    values_to = "pct_missing"
+  )
+
+# Plot with y-axis zoom so 0% bars are visible
+ggplot(df_missing_pct, 
+       aes(x = pct_missing, y = reorder(variable, pct_missing))) +
+  geom_col(fill = "gray70", color = "black", width = 0.7) +
+  scale_x_continuous(
+    limits = c(0, 0.5), 
+    breaks = c(0, 0.1, 0.2, 0.3, 0.4, 0.5),
+    labels = scales::percent_format(accuracy = 1)
+  ) +
+  labs(
+    title = "Percentage of Missing Values",
+    x = "Percent Missing",
+    y = "Variable"
+  ) +
+  theme_minimal(base_size = 14) +
+  theme(
+    axis.text.y = element_text(size = 6, hjust = 1),   
+    plot.title = element_text(face = "bold", size = 18)
+  )
+```
+Both the heatmap and bar chart confirm that there are no missing values present in this data set. This is very typical of machine generated telemetry since the sensors report at fixed intervals. For the bar chart, adding a truncated y-axis allows visual confirmation that all missing percentages are 0%, and the heatmap is filled with a singular color indicating no missing values as well.
+
+## Data Cleaning
+```{r}
+# Clean Variables
+df_all <- df_all |>
+  mutate(
+    date  = as.Date(timestamp),
+    hour  = lubridate::hour(timestamp),
+    cpu_temp = (p0_core_temp_mean + p1_core_temp_mean) / 2,
+    gpu_temp = rowMeans(across(gpu0_core_temp:gpu5_core_temp), na.rm = TRUE),
+    gpu_power_total =
+      p0_gpu0_power + p0_gpu1_power + p0_gpu2_power +
+      p1_gpu0_power + p1_gpu1_power + p1_gpu2_power
+  )
+
+df_daily <- df_all |>
+  mutate(date = as.Date(timestamp)) |>
+  group_by(node, date) |>
+  summarise(
+    cpu_temp = mean(cpu_temp, na.rm = TRUE),
+    gpu_temp = mean(gpu_temp, na.rm = TRUE),
+    cpu_power = mean(p0_power + p1_power, na.rm = TRUE),
+    gpu_power = mean(gpu_power_total, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+# Save Cleaned to Read into results.qmd
+saveRDS(df_all, "data/clean/hpc_3nodes_7days.rds")
+saveRDS(df_daily, "data/clean/hpc_daily_3nodes_7days.rds")
+```

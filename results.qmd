@@ -1,1 +1,230 @@
 # Results
+
+## Short Summary
+Across the three computing nodes studied, temperature and power were closely related. Whenever the processing units worked harder, they drew more power and heated up almost immediately. While most of the week showed routine low temperature operation, each node also had short bursts of heat and power, which made unusual activity easy to spot. When coming their overall behavior, the nodes shared similar baseline performance, however, their power and temperature distributions uncovered some nodes may handle more demanding jobs or experience different cooling conditions. These patterns reveal how power usage, temperature, and occasional anomalies can vary within the same machine, offering insight into each node's operational health. 
+
+```{r}
+#| label: Libraries and Read Cleaned Data File
+library(arrow)
+library(dplyr)
+library(zoo)
+library(dplyr)
+library(GGally)
+library(lubridate)
+library(ggplot2)
+library(vcd)
+library(RColorBrewer)
+library(hexbin)
+df_all <- readRDS("data/clean/hpc_3nodes_7days.rds")
+df_daily <- readRDS("data/clean/hpc_daily_3nodes_7days.rds")
+```
+
+## Power-Thermal Relationship
+```{r}
+#| label: CPU Temperature Over Time
+ggplot(df_all, aes(timestamp, cpu_temp)) +
+  geom_line(alpha = 0.4) +
+  facet_wrap(~ node, ncol = 1) +
+  labs(
+    title = "CPU Temperature Over Time Across Three HPC Nodes",
+    x = "Time",
+    y = "CPU Temperature (°C)"
+  ) +
+  theme_minimal(base_size = 14)
+```
+Nodes a07n04 and b03n06 show nearly identical thermal behavior, with quick temperature spikes around January 1st and again near January 7th. Node c03n13 exhibits the strongest and most sustained heat events, indicating heavier or more prolonged computational activity on that node. These spikes are consistent with increased processor workload because when CPUs draw more power to handle demanding tasks, the resulting electrical load converts almost immediately into additional heat, producing the thermal spikes visible in the plot.
+
+```{r}
+#| label: GPU Power Over Time
+ggplot(df_all, aes(timestamp, gpu_power_total)) +
+  geom_line(alpha = 0.4) +
+  facet_wrap(~ node, ncol = 1) +
+  labs(
+    title = "GPU Total Power Over Time Across Three HPC Nodes",
+    x = "Time",
+    y = "GPU Power (W)"
+  ) +
+  theme_minimal(base_size = 14)
+```
+The bursts of power correspond to GPU heavy jobs being scheduled which can be seen across a lot of the days which many indicate coordinated workloads rather than random usage. Node a07n04 has the longest sustained GPU load around January 4th and 7th. Nodes b03n06 and c03n13 seem to have frequent burst patterns too but with shorter durations, which may mean they handled briefer GPU tasks this week. 
+
+```{r}
+#| label: Smoothed CPU Temperature for Node a07n04
+df_roll <- df_all |>
+  filter(node == "a07n04") |>
+  arrange(timestamp) |>
+  mutate(cpu_roll = rollmean(cpu_temp, k = 300, fill = NA))
+
+ggplot(df_roll, aes(timestamp)) +
+  geom_line(aes(y = cpu_temp), alpha = 0.3) +
+  geom_line(aes(y = cpu_roll), color = "red") +
+  labs(
+    title = "CPU Temperature with 50-Minute Rolling Average",
+    x = "Time",
+    y = "Temperature (°C)"
+  ) +
+  theme_minimal(base_size = 16)
+```
+Short, sharp spikes from the raw line become clearer where node a07n04 experiences two major period of sustained heating corresponding to heightened computational load. Outside these periods, the smoothed line seems to tightly stay between 28-30 degrees C meaning the system returns quickly to its baseline temperature once the workload subsides. This plot smooths our noise and shows the underlying thermal pattern of the node behind the high frequency fluctuations. 
+
+```{r}
+#| label: CPU Temperature Heatmap (Hour x Day)
+df_heat <- df_all |>
+  mutate(
+    hour = hour(timestamp),
+    date = as.Date(timestamp)
+  )
+
+ggplot(df_heat, aes(hour, date, fill = cpu_temp)) +
+  geom_tile() +
+  scale_fill_viridis_c() +
+  facet_wrap(~ node, ncol = 1) +
+  labs(
+    title = "Daily CPU Temperature Patterns by Hour",
+    x = "Hour of Day",
+    y = "Date"
+  ) +
+  theme_minimal(base_size = 16)
+```
+The heatmap shows that all nodes stay near their baseline temperatures for most hours. Nodes a07n04 and b03n06 have isolated hot spots whereas c03n13 shows a full extended hot spot early on January 1st, which is consistent with its stronger workload bursts seen in earlier plots. 
+
+```{r}
+#| label: GPU Temperature vs GPU Power
+ggplot(df_all, aes(gpu_temp, gpu_power_total)) +
+  geom_hex() +
+  scale_fill_gradient(low = "grey", high = "purple") +
+  labs(
+    title = "GPU Temperature vs GPU Power",
+    x = "GPU Temperature (°C)",
+    y = "GPU Power (W)",
+    fill = "Count"
+  ) +
+  theme_minimal(base_size = 16)
+```
+The hexbin plot shows as GPU temperature increases, GPU power consumption also increases which indicates strong power-thermal coupling across all nodes. Most activity clusters are at lower temperatures while the higher power and higher temperature bins become sparser which shows extreme loads are rare but thermally intense.
+
+## Operational Anomalies
+```{r}
+#| label: CPU Temperature Anomaly Detection
+cpu_thresh <- quantile(df_all$cpu_temp, 0.95, na.rm = TRUE)
+
+df_plot <- df_all |>
+  mutate(anom = cpu_temp > cpu_thresh)
+
+ggplot(df_plot, aes(timestamp, cpu_temp)) +
+  geom_line(alpha = 0.3) +
+geom_point(
+  data = df_plot |> filter(anom),
+  aes(timestamp, cpu_temp),
+  color = "red",
+  shape = "."
+) +
+  facet_wrap(~ node, ncol = 1) +
+  labs(
+    title = "CPU Temperature Anomalies",
+    x = "Time",
+    y = "Temperature (°C)"
+  ) +
+  theme_minimal(base_size = 16)
+```
+Using the top 5% of CPU temperatures as an anomaly threshold, nodes a07n04 and b03n06 show only brief and isolated spikes, whereas c03n13 shows long runs of consecutive high temperatures. This clustering of high temperature outliers shows thermal stress which may indicate less effective cooling or early signs of node-specific thermal anomalies such as degradation.
+
+```{r}
+gpu_thresh <- quantile(df_all$gpu_power_total, 0.95, na.rm = TRUE)
+
+df_power_anom <- df_all |>
+  mutate(power_anom = gpu_power_total > gpu_thresh)
+
+ggplot(df_power_anom, aes(timestamp, gpu_power_total)) +
+  geom_line(alpha = 0.3) +
+  geom_point(
+    data = df_power_anom |> filter(power_anom),
+    aes(timestamp, gpu_power_total),
+    color = "red",
+    shape = "." 
+  ) +
+  facet_wrap(~ node, ncol = 1) +
+  labs(
+    title = "GPU Power Anomalies",
+    x = "Time",
+    y = "GPU Power (W)"
+  ) +
+  theme_minimal(base_size = 16)
+```
+The red points are the top 5% of GPU power readings representing rare periods where power draw exceeds the node's typically operating range. These spikes may indicate anomalies such as unexpected GPU heavy jobs, scheduler misallocation, or power capping failures. Node a07n04 shows the most frequent high power events potentially suggesting hardware or cooling irregularities. 
+
+```{r}
+#| label: Thermal Response Curve (GPU Power vs Temp Over Time)
+df_trc <- df_all |>
+  mutate(
+    date = as.Date(timestamp)
+  )
+
+ggplot(df_trc, aes(gpu_power_total, gpu_temp, color = factor(date))) +
+  geom_smooth(method = "lm", se = FALSE, linewidth = 1.1) +
+  facet_wrap(~ node, scales = "free") +
+  scale_color_viridis_d(name = "Date") +
+  labs(
+    title = "Thermal Response Curve: GPU Temperature vs GPU Power",
+    x = "GPU Power (W)",
+    y = "GPU Temperature (°C)"
+  ) +
+  theme_minimal(base_size = 16)
+```
+The GPU temperature–power relationship for node a07n04 becomes increasingly steep from January 4 to January 7. A growing slope indicates reduced thermal efficiency where the node is producing more heat per watt of GPU power. This pattern is consistent with temporary cooling stress or early signs of thermal degradation. While this does not prove hardware aging directly, it does suggest that the system operated under less favorable cooling conditions.
+
+## Cross Node Comparison
+
+```{r}
+#| label: Daily Metrics Per Node Parallel Coordinates Plot
+GGally::ggparcoord(
+  df_daily,
+  columns = which(names(df_daily) %in% c("cpu_temp", "gpu_temp", "gpu_power", "cpu_power")),
+  groupColumn = "node",
+  scale = "center"
+) +
+  labs(title = "Daily Metrics per Node",
+       x = "Metric", y = "Scaled Value") +
+  theme_minimal(base_size = 14)
+```
+Nodes a07n04 and b03n06 show many crossing lines, meaning their power and temperature metrics vary independently from day to day. Node c03n13 shows more aligned patterns, indicating its thermal and power metrics rise and fall together. This tighter coupling suggests heavier sustained use and a higher likelihood of non-uniform aging.
+
+```{r}
+#| label: CPU Temperature by Node
+# Compute medians to define ordering
+node_order <- df_all |>
+  group_by(node) |>
+  summarise(med = median(cpu_temp, na.rm = TRUE)) |>
+  arrange(desc(med)) |>
+  pull(node)
+
+ggplot(df_all, aes(factor(node, levels = node_order), cpu_temp)) +
+  geom_boxplot(fill = "lightgray",
+               outlier.size = 0.6) +
+  labs(
+    title = "CPU Temperature Distribution by Nodes",
+    x = "Node",
+    y = "Temperature (°C)"
+  ) +
+  theme_minimal(base_size = 16)
+```
+Node c03n13 has the highest median CPU temperature, wide spread of temperatures, and the most extreme outliers meaning it consistently runs hotter than the other nodes. Nodes a07n04 and b03n06 are more tightly clustered indicating more stable thermal behavior. 
+
+```{r}
+#| label: GPU Temperature Distributions Across Nodes
+ggplot(df_all, aes(gpu_temp, color = node, fill = node)) +
+  geom_density(alpha = 0.15, bw = 0.8, linewidth = 1.1) +
+  scale_color_manual(values = c("a07n04" = "#7FB3D5",
+                                "b03n06" = "#F5B7B1",
+                                "c03n13" = "#C39BD3")) +
+  scale_fill_manual(values = c("a07n04" = "#7FB3D5",
+                               "b03n06" = "#F5B7B1",
+                               "c03n13" = "#C39BD3")) +
+  labs(
+    title = "GPU Temperature Distributions Across Nodes",
+    x = "GPU Temperature (°C)",
+    y = "Density"
+  ) +
+  theme_minimal(base_size = 16)
+```
+Node b03n06 has the lowest GPU temperature operating range and node a07n04 has the strongest right-tail indicating more frequent higher GPU temperatures compared to other nodes. Node c03n13 also has elevated temperatures but its upper tail is shorter meaning the higher temperatures were more concentrated in shorter bursts. Overall, nodes operate similarly at baseline, but a07n04 is the warmest under load, aligning with patterns seen in the anomaly and thermal-response plots.
