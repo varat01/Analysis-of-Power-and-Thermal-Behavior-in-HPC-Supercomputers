@@ -4,6 +4,8 @@ project:
 
 execute:
   echo: true
+  warning: false
+  message: false
 
 book:
   title: "Analysis of Power and Thermal Behavior in HPC Supercomputers"
@@ -25,5 +27,3 @@ format:
   html:
     theme: cosmo
     code-fold: true
-
-

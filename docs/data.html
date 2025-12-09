@@ -180,7 +180,9 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
    
   <ul>
   <li><a href="#description" id="toc-description" class="nav-link active" data-scroll-target="#description"><span class="header-section-number">2.1</span> Description</a></li>
-  <li><a href="#missing-value-analysis" id="toc-missing-value-analysis" class="nav-link" data-scroll-target="#missing-value-analysis"><span class="header-section-number">2.2</span> Missing value analysis</a></li>
+  <li><a href="#data-loading" id="toc-data-loading" class="nav-link" data-scroll-target="#data-loading"><span class="header-section-number">2.2</span> Data Loading</a></li>
+  <li><a href="#missing-value-analysis" id="toc-missing-value-analysis" class="nav-link" data-scroll-target="#missing-value-analysis"><span class="header-section-number">2.3</span> Missing value analysis</a></li>
+  <li><a href="#data-cleaning" id="toc-data-cleaning" class="nav-link" data-scroll-target="#data-cleaning"><span class="header-section-number">2.4</span> Data Cleaning</a></li>
   </ul>
 <div class="toc-actions"><ul><li><a href="https://github.com/varat01/Analysis-of-Power-and-Thermal-Behavior-in-HPC-Supercomputers/edit/main/data.qmd" class="toc-action"><i class="bi bi-github"></i>Edit this page</a></li><li><a href="https://github.com/varat01/Analysis-of-Power-and-Thermal-Behavior-in-HPC-Supercomputers/issues/new" class="toc-action"><i class="bi empty"></i>Report an issue</a></li></ul></div></nav>
     </div>
@@ -210,73 +212,170 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <h2 data-number="2.1" class="anchored" data-anchor-id="description"><span class="header-section-number">2.1</span> Description</h2>
 <p>The data used for this project is from Oak Ridge National Laboratory: https://doi.ccs.ornl.gov/dataset/086578e9-8a9f-56b1-a657-0ed8b7393deb. I will be using a_fullperiod_10sec_58hosts.tar which is one of the sample subsets in that dataset package. It contains 10-second mean telemetry (power + temperature) across 58 nodes, spanning multiple months between 2020–2022.</p>
 <p>The data is collected by the lab’s systems administrators and monitoring infrastructure. It is sampled at 1 Hz for multiple nodes across the supercomputer. The format is in parquet files where each contains time series measurements for multiple nodes. The data fields include information such as time stamps, hostname/node ID, CPU and GPU power and temperature readings, and some additional sensor readings. The data collection was completed in 2022 for this set, therefore it is no longer actively being updated.</p>
-</section>
-<section id="missing-value-analysis" class="level2" data-number="2.2">
-<h2 data-number="2.2" class="anchored" data-anchor-id="missing-value-analysis"><span class="header-section-number">2.2</span> Missing value analysis</h2>
-<p>I have not noticed any large amount of missing values as of now, but the telemetry might include spikes or noise so I anticipate smoothing may be required for the visual analysis.</p>
+<p>For this project’s purposes I selected 3 nodes and a continuous 7 day period from the most recent data collection year of 2022. This subset provides enough cross node variation to explore power and temperature relationships, identify anomalies, and compare operational behavior. HPC telemetry produces millions of rows of data so restricting to a smaller sample ensures all visuals remain interpretable and reproducible. Additionally, large supercomputers such as this one use homogeneous hardware so the nodes in the same rack or partition tend to show similar behavior.</p>
 <div class="cell">
 <details class="code-fold">
 <summary>Code</summary>
-<div class="sourceCode cell-code" id="cb1"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(arrow)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb1"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(arrow)</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(lubridate)</span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(naniar)</span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(ggplot2)</span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(dplyr)</span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(tidyr)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </details>
-<div class="cell-output cell-output-stderr">
-<pre><code>
-Attaching package: 'arrow'</code></pre>
 </div>
-<div class="cell-output cell-output-stderr">
-<pre><code>The following object is masked from 'package:utils':
-
-    timestamp</code></pre>
+</section>
+<section id="data-loading" class="level2" data-number="2.2">
+<h2 data-number="2.2" class="anchored" data-anchor-id="data-loading"><span class="header-section-number">2.2</span> Data Loading</h2>
+<div class="cell">
+<details class="code-fold">
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb2"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a>node_files <span class="ot">&lt;-</span> <span class="fu">list</span>(</span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>  <span class="at">a07n04 =</span> <span class="fu">c</span>(</span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>    <span class="st">"~/Desktop/EDAV/Final Project/a_fullperiod_10sec_58hosts_decomp/a07n04/202201/20220101.parquet"</span>,</span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a>    <span class="st">"~/Desktop/EDAV/Final Project/a_fullperiod_10sec_58hosts_decomp/a07n04/202201/20220102.parquet"</span>,</span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a>    <span class="st">"~/Desktop/EDAV/Final Project/a_fullperiod_10sec_58hosts_decomp/a07n04/202201/20220103.parquet"</span>,</span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a>    <span class="st">"~/Desktop/EDAV/Final Project/a_fullperiod_10sec_58hosts_decomp/a07n04/202201/20220104.parquet"</span>,</span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a>    <span class="st">"~/Desktop/EDAV/Final Project/a_fullperiod_10sec_58hosts_decomp/a07n04/202201/20220105.parquet"</span>,</span>
+<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a>    <span class="st">"~/Desktop/EDAV/Final Project/a_fullperiod_10sec_58hosts_decomp/a07n04/202201/20220106.parquet"</span>,</span>
+<span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a>    <span class="st">"~/Desktop/EDAV/Final Project/a_fullperiod_10sec_58hosts_decomp/a07n04/202201/20220107.parquet"</span></span>
+<span id="cb2-10"><a href="#cb2-10" aria-hidden="true" tabindex="-1"></a>  ),</span>
+<span id="cb2-11"><a href="#cb2-11" aria-hidden="true" tabindex="-1"></a>  </span>
+<span id="cb2-12"><a href="#cb2-12" aria-hidden="true" tabindex="-1"></a>  <span class="at">b03n06 =</span> <span class="fu">c</span>(</span>
+<span id="cb2-13"><a href="#cb2-13" aria-hidden="true" tabindex="-1"></a>    <span class="st">"~/Desktop/EDAV/Final Project/a_fullperiod_10sec_58hosts_decomp/b03n06/202201/20220101.parquet"</span>,</span>
+<span id="cb2-14"><a href="#cb2-14" aria-hidden="true" tabindex="-1"></a>    <span class="st">"~/Desktop/EDAV/Final Project/a_fullperiod_10sec_58hosts_decomp/b03n06/202201/20220102.parquet"</span>,</span>
+<span id="cb2-15"><a href="#cb2-15" aria-hidden="true" tabindex="-1"></a>    <span class="st">"~/Desktop/EDAV/Final Project/a_fullperiod_10sec_58hosts_decomp/b03n06/202201/20220103.parquet"</span>,</span>
+<span id="cb2-16"><a href="#cb2-16" aria-hidden="true" tabindex="-1"></a>    <span class="st">"~/Desktop/EDAV/Final Project/a_fullperiod_10sec_58hosts_decomp/b03n06/202201/20220104.parquet"</span>,</span>
+<span id="cb2-17"><a href="#cb2-17" aria-hidden="true" tabindex="-1"></a>    <span class="st">"~/Desktop/EDAV/Final Project/a_fullperiod_10sec_58hosts_decomp/b03n06/202201/20220105.parquet"</span>,</span>
+<span id="cb2-18"><a href="#cb2-18" aria-hidden="true" tabindex="-1"></a>    <span class="st">"~/Desktop/EDAV/Final Project/a_fullperiod_10sec_58hosts_decomp/b03n06/202201/20220106.parquet"</span>,</span>
+<span id="cb2-19"><a href="#cb2-19" aria-hidden="true" tabindex="-1"></a>    <span class="st">"~/Desktop/EDAV/Final Project/a_fullperiod_10sec_58hosts_decomp/b03n06/202201/20220107.parquet"</span></span>
+<span id="cb2-20"><a href="#cb2-20" aria-hidden="true" tabindex="-1"></a>  ),</span>
+<span id="cb2-21"><a href="#cb2-21" aria-hidden="true" tabindex="-1"></a>  </span>
+<span id="cb2-22"><a href="#cb2-22" aria-hidden="true" tabindex="-1"></a>  <span class="at">c03n13 =</span> <span class="fu">c</span>(</span>
+<span id="cb2-23"><a href="#cb2-23" aria-hidden="true" tabindex="-1"></a>    <span class="st">"~/Desktop/EDAV/Final Project/a_fullperiod_10sec_58hosts_decomp/c03n13/202201/20220101.parquet"</span>,</span>
+<span id="cb2-24"><a href="#cb2-24" aria-hidden="true" tabindex="-1"></a>    <span class="st">"~/Desktop/EDAV/Final Project/a_fullperiod_10sec_58hosts_decomp/c03n13/202201/20220102.parquet"</span>,</span>
+<span id="cb2-25"><a href="#cb2-25" aria-hidden="true" tabindex="-1"></a>    <span class="st">"~/Desktop/EDAV/Final Project/a_fullperiod_10sec_58hosts_decomp/c03n13/202201/20220103.parquet"</span>,</span>
+<span id="cb2-26"><a href="#cb2-26" aria-hidden="true" tabindex="-1"></a>    <span class="st">"~/Desktop/EDAV/Final Project/a_fullperiod_10sec_58hosts_decomp/c03n13/202201/20220104.parquet"</span>,</span>
+<span id="cb2-27"><a href="#cb2-27" aria-hidden="true" tabindex="-1"></a>    <span class="st">"~/Desktop/EDAV/Final Project/a_fullperiod_10sec_58hosts_decomp/c03n13/202201/20220105.parquet"</span>,</span>
+<span id="cb2-28"><a href="#cb2-28" aria-hidden="true" tabindex="-1"></a>    <span class="st">"~/Desktop/EDAV/Final Project/a_fullperiod_10sec_58hosts_decomp/c03n13/202201/20220106.parquet"</span>,</span>
+<span id="cb2-29"><a href="#cb2-29" aria-hidden="true" tabindex="-1"></a>    <span class="st">"~/Desktop/EDAV/Final Project/a_fullperiod_10sec_58hosts_decomp/c03n13/202201/20220107.parquet"</span></span>
+<span id="cb2-30"><a href="#cb2-30" aria-hidden="true" tabindex="-1"></a>  )</span>
+<span id="cb2-31"><a href="#cb2-31" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb2-32"><a href="#cb2-32" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-33"><a href="#cb2-33" aria-hidden="true" tabindex="-1"></a>df_all <span class="ot">&lt;-</span> <span class="fu">do.call</span>(</span>
+<span id="cb2-34"><a href="#cb2-34" aria-hidden="true" tabindex="-1"></a>  rbind,</span>
+<span id="cb2-35"><a href="#cb2-35" aria-hidden="true" tabindex="-1"></a>  <span class="fu">lapply</span>(<span class="fu">names</span>(node_files), <span class="cf">function</span>(node_name) {</span>
+<span id="cb2-36"><a href="#cb2-36" aria-hidden="true" tabindex="-1"></a>    <span class="fu">do.call</span>(</span>
+<span id="cb2-37"><a href="#cb2-37" aria-hidden="true" tabindex="-1"></a>      rbind,</span>
+<span id="cb2-38"><a href="#cb2-38" aria-hidden="true" tabindex="-1"></a>      <span class="fu">lapply</span>(node_files[[node_name]], <span class="cf">function</span>(path) {</span>
+<span id="cb2-39"><a href="#cb2-39" aria-hidden="true" tabindex="-1"></a>        df <span class="ot">&lt;-</span> <span class="fu">read_parquet</span>(path)</span>
+<span id="cb2-40"><a href="#cb2-40" aria-hidden="true" tabindex="-1"></a>        df<span class="sc">$</span>node <span class="ot">&lt;-</span> node_name</span>
+<span id="cb2-41"><a href="#cb2-41" aria-hidden="true" tabindex="-1"></a>        df</span>
+<span id="cb2-42"><a href="#cb2-42" aria-hidden="true" tabindex="-1"></a>      })</span>
+<span id="cb2-43"><a href="#cb2-43" aria-hidden="true" tabindex="-1"></a>    )</span>
+<span id="cb2-44"><a href="#cb2-44" aria-hidden="true" tabindex="-1"></a>  })</span>
+<span id="cb2-45"><a href="#cb2-45" aria-hidden="true" tabindex="-1"></a>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+</div>
+</section>
+<section id="missing-value-analysis" class="level2" data-number="2.3">
+<h2 data-number="2.3" class="anchored" data-anchor-id="missing-value-analysis"><span class="header-section-number">2.3</span> Missing value analysis</h2>
+<p>Missing values could occur due to sensor glitches, communication drops, or system resets. The plots below include a missing value heatmap and a bar plot showing aggregated missing patterns if any are present.</p>
+<div class="cell">
+<details class="code-fold">
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb3"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Missing Value Heatmap</span></span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>df_all <span class="sc">|&gt;</span></span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">select</span>(<span class="fu">all_of</span>(<span class="fu">names</span>(df_all))) <span class="sc">|&gt;</span></span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">vis_miss</span>(<span class="at">warn_large_data =</span> <span class="cn">FALSE</span>) <span class="sc">+</span></span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a>  <span class="fu">labs</span>(</span>
+<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a>    <span class="at">title =</span> <span class="st">"Missing Value Heatmap"</span>,</span>
+<span id="cb3-7"><a href="#cb3-7" aria-hidden="true" tabindex="-1"></a>    <span class="at">x =</span> <span class="cn">NULL</span>,</span>
+<span id="cb3-8"><a href="#cb3-8" aria-hidden="true" tabindex="-1"></a>    <span class="at">y =</span> <span class="st">"Observation Index"</span></span>
+<span id="cb3-9"><a href="#cb3-9" aria-hidden="true" tabindex="-1"></a>  ) <span class="sc">+</span></span>
+<span id="cb3-10"><a href="#cb3-10" aria-hidden="true" tabindex="-1"></a>  <span class="fu">theme_minimal</span>(<span class="at">base_size =</span> <span class="dv">14</span>) <span class="sc">+</span></span>
+<span id="cb3-11"><a href="#cb3-11" aria-hidden="true" tabindex="-1"></a>  <span class="fu">theme</span>(<span class="at">axis.text.x =</span> <span class="fu">element_text</span>(<span class="at">angle =</span> <span class="dv">90</span>, <span class="at">hjust =</span> <span class="dv">0</span>, <span class="at">size =</span> <span class="dv">7</span>))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+<div class="cell-output-display">
+<div>
+<figure class="figure">
+<p><img src="data_files/figure-html/Missing Value Heatmap and Aggregated Missing Patterns Bar Chart-1.png" class="img-fluid figure-img" width="672"></p>
+</figure>
+</div>
 </div>
 <details class="code-fold">
 <summary>Code</summary>
-<div class="sourceCode cell-code" id="cb4"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a>df <span class="ot">&lt;-</span> <span class="fu">read_parquet</span>(<span class="st">"~/Desktop/EDAV/Final Project/a_fullperiod_10sec_58hosts_decomp/a07n04/202201/20220101.parquet"</span>)</span>
-<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a><span class="fu">head</span>(df)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb4"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Aggregated Missing Patterns Bar Chart</span></span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>df_missing_pct <span class="ot">&lt;-</span> df_all <span class="sc">|&gt;</span> </span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">summarise</span>(<span class="fu">across</span>(<span class="fu">everything</span>(), <span class="sc">~</span> <span class="fu">mean</span>(<span class="fu">is.na</span>(.)) <span class="sc">*</span> <span class="dv">100</span>)) <span class="sc">|&gt;</span> </span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">pivot_longer</span>(</span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a>    <span class="at">cols =</span> <span class="fu">everything</span>(),</span>
+<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a>    <span class="at">names_to =</span> <span class="st">"variable"</span>,</span>
+<span id="cb4-7"><a href="#cb4-7" aria-hidden="true" tabindex="-1"></a>    <span class="at">values_to =</span> <span class="st">"pct_missing"</span></span>
+<span id="cb4-8"><a href="#cb4-8" aria-hidden="true" tabindex="-1"></a>  )</span>
+<span id="cb4-9"><a href="#cb4-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-10"><a href="#cb4-10" aria-hidden="true" tabindex="-1"></a><span class="co"># Plot with y-axis zoom so 0% bars are visible</span></span>
+<span id="cb4-11"><a href="#cb4-11" aria-hidden="true" tabindex="-1"></a><span class="fu">ggplot</span>(df_missing_pct, </span>
+<span id="cb4-12"><a href="#cb4-12" aria-hidden="true" tabindex="-1"></a>       <span class="fu">aes</span>(<span class="at">x =</span> pct_missing, <span class="at">y =</span> <span class="fu">reorder</span>(variable, pct_missing))) <span class="sc">+</span></span>
+<span id="cb4-13"><a href="#cb4-13" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_col</span>(<span class="at">fill =</span> <span class="st">"gray70"</span>, <span class="at">color =</span> <span class="st">"black"</span>, <span class="at">width =</span> <span class="fl">0.7</span>) <span class="sc">+</span></span>
+<span id="cb4-14"><a href="#cb4-14" aria-hidden="true" tabindex="-1"></a>  <span class="fu">scale_x_continuous</span>(</span>
+<span id="cb4-15"><a href="#cb4-15" aria-hidden="true" tabindex="-1"></a>    <span class="at">limits =</span> <span class="fu">c</span>(<span class="dv">0</span>, <span class="fl">0.5</span>), </span>
+<span id="cb4-16"><a href="#cb4-16" aria-hidden="true" tabindex="-1"></a>    <span class="at">breaks =</span> <span class="fu">c</span>(<span class="dv">0</span>, <span class="fl">0.1</span>, <span class="fl">0.2</span>, <span class="fl">0.3</span>, <span class="fl">0.4</span>, <span class="fl">0.5</span>),</span>
+<span id="cb4-17"><a href="#cb4-17" aria-hidden="true" tabindex="-1"></a>    <span class="at">labels =</span> scales<span class="sc">::</span><span class="fu">percent_format</span>(<span class="at">accuracy =</span> <span class="dv">1</span>)</span>
+<span id="cb4-18"><a href="#cb4-18" aria-hidden="true" tabindex="-1"></a>  ) <span class="sc">+</span></span>
+<span id="cb4-19"><a href="#cb4-19" aria-hidden="true" tabindex="-1"></a>  <span class="fu">labs</span>(</span>
+<span id="cb4-20"><a href="#cb4-20" aria-hidden="true" tabindex="-1"></a>    <span class="at">title =</span> <span class="st">"Percentage of Missing Values"</span>,</span>
+<span id="cb4-21"><a href="#cb4-21" aria-hidden="true" tabindex="-1"></a>    <span class="at">x =</span> <span class="st">"Percent Missing"</span>,</span>
+<span id="cb4-22"><a href="#cb4-22" aria-hidden="true" tabindex="-1"></a>    <span class="at">y =</span> <span class="st">"Variable"</span></span>
+<span id="cb4-23"><a href="#cb4-23" aria-hidden="true" tabindex="-1"></a>  ) <span class="sc">+</span></span>
+<span id="cb4-24"><a href="#cb4-24" aria-hidden="true" tabindex="-1"></a>  <span class="fu">theme_minimal</span>(<span class="at">base_size =</span> <span class="dv">14</span>) <span class="sc">+</span></span>
+<span id="cb4-25"><a href="#cb4-25" aria-hidden="true" tabindex="-1"></a>  <span class="fu">theme</span>(</span>
+<span id="cb4-26"><a href="#cb4-26" aria-hidden="true" tabindex="-1"></a>    <span class="at">axis.text.y =</span> <span class="fu">element_text</span>(<span class="at">size =</span> <span class="dv">6</span>, <span class="at">hjust =</span> <span class="dv">1</span>),   </span>
+<span id="cb4-27"><a href="#cb4-27" aria-hidden="true" tabindex="-1"></a>    <span class="at">plot.title =</span> <span class="fu">element_text</span>(<span class="at">face =</span> <span class="st">"bold"</span>, <span class="at">size =</span> <span class="dv">18</span>)</span>
+<span id="cb4-28"><a href="#cb4-28" aria-hidden="true" tabindex="-1"></a>  )</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </details>
-<div class="cell-output cell-output-stdout">
-<pre><code>            timestamp hostname ps0_input_power ps1_input_power p0_gpu0_power
-1 2022-01-01 16:45:50   a07n04           371.0           546.0          51.0
-2 2022-01-01 16:46:00   a07n04           371.5           546.1          51.5
-3 2022-01-01 16:46:10   a07n04           370.9           546.4          51.5
-4 2022-01-01 16:46:20   a07n04           371.7           545.7          51.3
-5 2022-01-01 16:46:30   a07n04           371.6           545.8          51.4
-6 2022-01-01 16:46:40   a07n04           371.7           545.9          51.4
-  p0_gpu1_power p0_gpu2_power p1_gpu0_power p1_gpu1_power p1_gpu2_power
-1          50.0          52.0          50.0          50.0          52.0
-2          50.0          52.4          50.2          50.0          52.0
-3          50.0          52.5          50.2          50.0          52.0
-4          49.8          52.3          50.1          49.8          52.0
-5          49.9          52.3          50.1          50.0          52.2
-6          50.0          52.5          50.0          49.8          52.0
-  p0_power p1_power gpu0_core_temp gpu1_core_temp gpu2_core_temp gpu3_core_temp
-1     57.0     49.0             31             32           33.0           31.0
-2     57.0     49.0             31             32           32.0           31.3
-3     55.6     49.2             31             32           32.0           31.6
-4     56.9     49.1             31             32           32.0           31.4
-5     56.9     49.4             31             32           32.0           31.4
-6     56.9     49.0             31             32           32.2           31.6
-  gpu4_core_temp gpu5_core_temp gpu0_mem_temp gpu1_mem_temp gpu2_mem_temp
-1             32             32            28            29            30
-2             32             32            28            29            30
-3             32             32            28            29            30
-4             32             32            28            29            30
-5             32             32            28            29            30
-6             32             32            28            29            30
-  gpu3_mem_temp gpu4_mem_temp gpu5_mem_temp p0_core_temp_mean p0_core_temp_min
-1          28.0            28          29.0          29.04762             27.0
-2          28.8            28          28.7          29.27619             27.4
-3          28.1            28          28.1          29.48095             27.6
-4          28.0            28          28.4          29.64762             27.9
-5          28.4            28          28.5          29.24762             27.2
-6          28.5            28          28.5          29.33809             27.4
-  p0_core_temp_max p1_core_temp_mean p1_core_temp_min p1_core_temp_max
-1             39.0          29.61905             27.0             38.0
-2             37.9          29.49047             28.2             36.8
-3             38.3          29.43809             28.2             37.0
-4             38.6          29.66667             28.5             36.8
-5             38.2          29.39047             28.1             36.7
-6             38.4          29.54762             28.2             36.7</code></pre>
+<div class="cell-output-display">
+<div>
+<figure class="figure">
+<p><img src="data_files/figure-html/Missing Value Heatmap and Aggregated Missing Patterns Bar Chart-2.png" class="img-fluid figure-img" width="672"></p>
+</figure>
 </div>
+</div>
+</div>
+<p>Both the heatmap and bar chart confirm that there are no missing values present in this data set. This is very typical of machine generated telemetry since the sensors report at fixed intervals. For the bar chart, adding a truncated y-axis allows visual confirmation that all missing percentages are 0%, and the heatmap is filled with a singular color indicating no missing values as well.</p>
+</section>
+<section id="data-cleaning" class="level2" data-number="2.4">
+<h2 data-number="2.4" class="anchored" data-anchor-id="data-cleaning"><span class="header-section-number">2.4</span> Data Cleaning</h2>
+<div class="cell">
+<details class="code-fold">
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb5"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Clean Variables</span></span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a>df_all <span class="ot">&lt;-</span> df_all <span class="sc">|&gt;</span></span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">mutate</span>(</span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a>    <span class="at">date  =</span> <span class="fu">as.Date</span>(timestamp),</span>
+<span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a>    <span class="at">hour  =</span> lubridate<span class="sc">::</span><span class="fu">hour</span>(timestamp),</span>
+<span id="cb5-6"><a href="#cb5-6" aria-hidden="true" tabindex="-1"></a>    <span class="at">cpu_temp =</span> (p0_core_temp_mean <span class="sc">+</span> p1_core_temp_mean) <span class="sc">/</span> <span class="dv">2</span>,</span>
+<span id="cb5-7"><a href="#cb5-7" aria-hidden="true" tabindex="-1"></a>    <span class="at">gpu_temp =</span> <span class="fu">rowMeans</span>(<span class="fu">across</span>(gpu0_core_temp<span class="sc">:</span>gpu5_core_temp), <span class="at">na.rm =</span> <span class="cn">TRUE</span>),</span>
+<span id="cb5-8"><a href="#cb5-8" aria-hidden="true" tabindex="-1"></a>    <span class="at">gpu_power_total =</span></span>
+<span id="cb5-9"><a href="#cb5-9" aria-hidden="true" tabindex="-1"></a>      p0_gpu0_power <span class="sc">+</span> p0_gpu1_power <span class="sc">+</span> p0_gpu2_power <span class="sc">+</span></span>
+<span id="cb5-10"><a href="#cb5-10" aria-hidden="true" tabindex="-1"></a>      p1_gpu0_power <span class="sc">+</span> p1_gpu1_power <span class="sc">+</span> p1_gpu2_power</span>
+<span id="cb5-11"><a href="#cb5-11" aria-hidden="true" tabindex="-1"></a>  )</span>
+<span id="cb5-12"><a href="#cb5-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-13"><a href="#cb5-13" aria-hidden="true" tabindex="-1"></a>df_daily <span class="ot">&lt;-</span> df_all <span class="sc">|&gt;</span></span>
+<span id="cb5-14"><a href="#cb5-14" aria-hidden="true" tabindex="-1"></a>  <span class="fu">mutate</span>(<span class="at">date =</span> <span class="fu">as.Date</span>(timestamp)) <span class="sc">|&gt;</span></span>
+<span id="cb5-15"><a href="#cb5-15" aria-hidden="true" tabindex="-1"></a>  <span class="fu">group_by</span>(node, date) <span class="sc">|&gt;</span></span>
+<span id="cb5-16"><a href="#cb5-16" aria-hidden="true" tabindex="-1"></a>  <span class="fu">summarise</span>(</span>
+<span id="cb5-17"><a href="#cb5-17" aria-hidden="true" tabindex="-1"></a>    <span class="at">cpu_temp =</span> <span class="fu">mean</span>(cpu_temp, <span class="at">na.rm =</span> <span class="cn">TRUE</span>),</span>
+<span id="cb5-18"><a href="#cb5-18" aria-hidden="true" tabindex="-1"></a>    <span class="at">gpu_temp =</span> <span class="fu">mean</span>(gpu_temp, <span class="at">na.rm =</span> <span class="cn">TRUE</span>),</span>
+<span id="cb5-19"><a href="#cb5-19" aria-hidden="true" tabindex="-1"></a>    <span class="at">cpu_power =</span> <span class="fu">mean</span>(p0_power <span class="sc">+</span> p1_power, <span class="at">na.rm =</span> <span class="cn">TRUE</span>),</span>
+<span id="cb5-20"><a href="#cb5-20" aria-hidden="true" tabindex="-1"></a>    <span class="at">gpu_power =</span> <span class="fu">mean</span>(gpu_power_total, <span class="at">na.rm =</span> <span class="cn">TRUE</span>),</span>
+<span id="cb5-21"><a href="#cb5-21" aria-hidden="true" tabindex="-1"></a>    <span class="at">.groups =</span> <span class="st">"drop"</span></span>
+<span id="cb5-22"><a href="#cb5-22" aria-hidden="true" tabindex="-1"></a>  )</span>
+<span id="cb5-23"><a href="#cb5-23" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-24"><a href="#cb5-24" aria-hidden="true" tabindex="-1"></a><span class="co"># Save Cleaned to Read into results.qmd</span></span>
+<span id="cb5-25"><a href="#cb5-25" aria-hidden="true" tabindex="-1"></a><span class="fu">saveRDS</span>(df_all, <span class="st">"data/clean/hpc_3nodes_7days.rds"</span>)</span>
+<span id="cb5-26"><a href="#cb5-26" aria-hidden="true" tabindex="-1"></a><span class="fu">saveRDS</span>(df_daily, <span class="st">"data/clean/hpc_daily_3nodes_7days.rds"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
 </div>
 
 
