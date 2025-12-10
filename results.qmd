@@ -1,7 +1,7 @@
 # Results
 
 ## Short Summary
-Across the three computing nodes studied, temperature and power were closely related. Whenever the processing units worked harder, they drew more power and heated up almost immediately. While most of the week showed routine low temperature operation, each node also had short bursts of heat and power, which made unusual activity easy to spot. When coming their overall behavior, the nodes shared similar baseline performance, however, their power and temperature distributions uncovered some nodes may handle more demanding jobs or experience different cooling conditions. These patterns reveal how power usage, temperature, and occasional anomalies can vary within the same machine, offering insight into each node's operational health. 
+Across the three computing nodes studied, temperature and power were closely related. Whenever the processing units worked harder, they drew more power and heated up almost immediately. While most of the week showed routine low temperature operation, each node also had short bursts of heat and power, which made unusual activity easy to spot. The nodes shared similar baseline performance, however, their power and temperature distributions uncovered some nodes may handle more demanding jobs or experience different cooling conditions. These patterns reveal how power usage, temperature, and occasional anomalies can vary within the same machine, offering insight into each node's operational health. 
 
 ```{r}
 #| label: Libraries and Read Cleaned Data File
@@ -156,20 +156,25 @@ The red points are the top 5% of GPU power readings representing rare periods wh
 ```{r}
 #| label: Thermal Response Curve (GPU Power vs Temp Over Time)
 df_trc <- df_all |>
-  mutate(
-    date = as.Date(timestamp)
-  )
+  mutate(date = as.Date(timestamp))
 
 ggplot(df_trc, aes(gpu_power_total, gpu_temp, color = factor(date))) +
   geom_smooth(method = "lm", se = FALSE, linewidth = 1.1) +
-  facet_wrap(~ node, scales = "free") +
+  facet_wrap(~ node, scales = "free_x") +
+  scale_x_continuous(
+    breaks = c(500, 1000, 1500, 2000),
+    labels = c("500", "1000", "1500", "2000")
+  ) +
   scale_color_viridis_d(name = "Date") +
   labs(
     title = "Thermal Response Curve: GPU Temperature vs GPU Power",
     x = "GPU Power (W)",
     y = "GPU Temperature (°C)"
   ) +
-  theme_minimal(base_size = 16)
+  theme_minimal(base_size = 16) +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1)
+  )
 ```
 The GPU temperature–power relationship for node a07n04 becomes increasingly steep from January 4 to January 7. A growing slope indicates reduced thermal efficiency where the node is producing more heat per watt of GPU power. This pattern is consistent with temporary cooling stress or early signs of thermal degradation. While this does not prove hardware aging directly, it does suggest that the system operated under less favorable cooling conditions.
 
@@ -177,15 +182,31 @@ The GPU temperature–power relationship for node a07n04 becomes increasingly st
 
 ```{r}
 #| label: Daily Metrics Per Node Parallel Coordinates Plot
+df_daily_pretty <- df_daily |>
+  rename(
+    `CPU Temperature` = cpu_temp,
+    `GPU Temperature` = gpu_temp,
+    `GPU Power`       = gpu_power,
+    `CPU Power`       = cpu_power
+  )
+
 GGally::ggparcoord(
-  df_daily,
-  columns = which(names(df_daily) %in% c("cpu_temp", "gpu_temp", "gpu_power", "cpu_power")),
+  df_daily_pretty,
+  columns = which(names(df_daily_pretty) %in% 
+                    c("CPU Temperature", "GPU Temperature", 
+                      "GPU Power", "CPU Power")),
   groupColumn = "node",
   scale = "center"
 ) +
-  labs(title = "Daily Metrics per Node",
-       x = "Metric", y = "Scaled Value") +
-  theme_minimal(base_size = 14)
+  labs(
+    title = "Daily Metrics per Node",
+    x = "Metric",
+    y = "Scaled Value"
+  ) +
+  theme_minimal(base_size = 14) +
+  theme(
+    axis.text.x = element_text(size = 12, angle = 45, hjust = 1)
+  )
 ```
 Nodes a07n04 and b03n06 show many crossing lines, meaning their power and temperature metrics vary independently from day to day. Node c03n13 shows more aligned patterns, indicating its thermal and power metrics rise and fall together. This tighter coupling suggests heavier sustained use and a higher likelihood of non-uniform aging.
 
@@ -208,7 +229,7 @@ ggplot(df_all, aes(factor(node, levels = node_order), cpu_temp)) +
   ) +
   theme_minimal(base_size = 16)
 ```
-Node c03n13 has the highest median CPU temperature, wide spread of temperatures, and the most extreme outliers meaning it consistently runs hotter than the other nodes. Nodes a07n04 and b03n06 are more tightly clustered indicating more stable thermal behavior. 
+Node c03n13 has the highest median CPU temperature and the most extreme outliers meaning it consistently runs hotter than the other nodes. Nodes a07n04 and b03n06 are more tightly clustered indicating more stable thermal behavior. 
 
 ```{r}
 #| label: GPU Temperature Distributions Across Nodes
