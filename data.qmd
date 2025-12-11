@@ -3,7 +3,7 @@
 ## Description
 
 The data used for this project is from Oak Ridge National Laboratory:
-https://doi.ccs.ornl.gov/dataset/086578e9-8a9f-56b1-a657-0ed8b7393deb.
+<https://doi.ccs.ornl.gov/dataset/086578e9-8a9f-56b1-a657-0ed8b7393deb>.
 I will be using a_fullperiod_10sec_58hosts.tar which is one of the sample subsets in that dataset package. It contains 10-second mean telemetry (power + temperature) across 58 nodes, spanning multiple months between 2020–2022. The data is collected by the lab's systems administrators and monitoring infrastructure. It is sampled at 1 Hz for multiple nodes across the supercomputer. The format is in parquet files where each contains time series measurements for multiple nodes. The data fields include information such as time stamps, hostname/node ID, CPU and GPU power and temperature readings, and some additional sensor readings. The data collection was completed in 2022 for this set, therefore it is no longer actively being updated.
 
 For this project's purposes I selected 3 nodes and a continuous 7 day period from the most recent data collection year of 2022. This subset provides enough cross node variation to explore power and temperature relationships, identify anomalies, and compare operational behavior. HPC telemetry produces millions of rows of data so restricting to a smaller sample ensures all visuals remain interpretable and reproducible. Additionally, large supercomputers such as this one use homogeneous hardware so the nodes in the same rack or partition tend to show similar behavior. 
